@@ -376,6 +376,15 @@ function openForm(category) {
   setTimeout(() => document.getElementById('form-title-input').focus(), 100);
 }
 
+['form-title-input', 'form-due'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
+      e.preventDefault();
+      saveTodo();
+    }
+  });
+});
+
 function openEdit() {
   editingId = selectedTodo.id;
   formCategory = selectedTodo.category || 'other';
