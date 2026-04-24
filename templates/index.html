@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ToDo</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    background: #f5f5f7;
+    color: #222;
+    padding-bottom: 80px;
+  }
+  header {
+    background: #2c7be5;
+    color: #fff;
+    padding: 14px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 { margin: 0; font-size: 18px; }
+  header a { color: #fff; text-decoration: none; font-size: 14px; opacity: 0.9; }
+  .tabs {
+    display: flex;
+    background: #fff;
+    border-bottom: 1px solid #e5e5e5;
+  }
+  .tabs button {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    background: none;
+    font-size: 14px;
+    color: #666;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+  }
+  .tabs button.active {
+    color: #2c7be5;
+    border-bottom-color: #2c7be5;
+    font-weight: 600;
+  }
+  .list { padding: 12px; }
+  .todo {
+    background: #fff;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 8px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .todo .due {
+    font-size: 12px;
+    color: #888;
+    min-width: 64px;
+  }
+  .todo.overdue .due { color: #e53e3e; font-weight: 600; }
+  .todo.today .due { color: #dd6b20; font-weight: 600; }
+  .todo.soon .due { color: #d69e2e; }
+  .todo .title { flex: 1; font-size: 15px; }
+  .todo .tpl-badge {
+    font-size: 10px;
+    background: #edf2f7;
+    color: #4a5568;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .todo.completed .title { text-decoration: line-through; color: #999; }
+  .empty { text-align: center; color: #999; padding: 40px 0; }
+
+  .fab {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: #2c7be5;
+    color: #fff;
+    font-size: 30px;
+    border: none;
+    box-shadow: 0 4px 12px rgba(44,123,229,0.4);
+    cursor: pointer;
+    z-index: 5;
+  }
+
+  .modal-bg {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 16px;
+  }
+  .modal-bg.show { display: flex; }
+  .modal {
+    background: #fff;
+    border-radius: 14px;
+    padding: 20px;
+    width: 100%;
+    max-width: 360px;
+  }
+  .modal h2 { margin: 0 0 8px; font-size: 16px; }
+  .modal .detail {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 16px;
+    word-break: break-word;
+  }
+  .modal .btn-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .btn {
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    font-size: 15px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .btn-primary { background: #38a169; color: #fff; }
+  .btn-secondary { background: #edf2f7; color: #333; }
+  .btn-danger { background: #fff; color: #e53e3e; border: 1px solid #fed7d7; }
+  .btn-cancel { background: none; color: #666; }
+
+  .form-modal .modal { max-width: 400px; }
+  .form-modal label { display: block; font-size: 13px; color: #555; margin-bottom: 4px; }
+  .form-modal input, .form-modal select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    font-size: 15px;
+    margin-bottom: 12px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ToDo</h1>
+  <a href="/templates">定期テンプレート →</a>
+</header>
+
+<div class="tabs">
+  <button id="tab-pending" class="active" onclick="switchTab('pending')">未完了</button>
+  <button id="tab-done" onclick="switchTab('done')">完了済み</button>
+</div>
+
+<div id="list" class="list"></div>
+
+<button class="fab" onclick="openForm()">＋</button>
+
+<!-- 完了確認モーダル -->
+<div id="modal" class="modal-bg" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h2 id="modal-title"></h2>
+    <div id="modal-detail" class="detail"></div>
+    <div class="btn-row">
+      <button id="modal-action" class="btn btn-primary">✅ 完了にする</button>
+      <button class="btn btn-secondary" onclick="openEdit()">✏️ 編集</button>
+      <button class="btn btn-danger" onclick="deleteTodo()">🗑 削除</button>
+      <button class="btn btn-cancel" onclick="closeModal()">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<!-- 新規/編集モーダル -->
+<div id="form-modal" class="modal-bg form-modal" onclick="closeForm(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h2 id="form-title">新規ToDo</h2>
+    <label>タイトル</label>
+    <input id="form-title-input" type="text" placeholder="例：振込をする">
+    <label>期限（任意）</label>
+    <input id="form-due" type="date">
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="saveTodo()">保存</button>
+      <button class="btn btn-cancel" onclick="closeForm()">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentTab = 'pending';
+let selectedTodo = null;
+let editingId = null;
+
+const fmtDate = (s) => {
+  if (!s) return '';
+  const [y, m, d] = s.split('-');
+  return `${parseInt(m)}/${parseInt(d)}`;
+};
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+function dayDiff(dueStr) {
+  if (!dueStr) return null;
+  const due = new Date(dueStr + 'T00:00:00');
+  const now = new Date(today() + 'T00:00:00');
+  return Math.round((due - now) / 86400000);
+}
+
+async function load() {
+  const completed = currentTab === 'done' ? '1' : '0';
+  const res = await fetch(`/api/todos?completed=${completed}`);
+  const todos = await res.json();
+  const list = document.getElementById('list');
+  if (todos.length === 0) {
+    list.innerHTML = '<div class="empty">ToDoはありません</div>';
+    return;
+  }
+  list.innerHTML = todos.map(t => {
+    const diff = dayDiff(t.due_date);
+    let cls = '';
+    if (currentTab === 'pending' && diff !== null) {
+      if (diff < 0) cls = 'overdue';
+      else if (diff === 0) cls = 'today';
+      else if (diff <= 3) cls = 'soon';
+    }
+    const due = t.due_date
+      ? (diff === 0 ? '今日' : (diff < 0 ? `${-diff}日前` : fmtDate(t.due_date)))
+      : '—';
+    const badge = t.template_id ? '<span class="tpl-badge">定期</span>' : '';
+    const completedCls = t.completed ? ' completed' : '';
+    return `<div class="todo ${cls}${completedCls}" data-id="${t.id}">
+      <span class="due">${due}</span>
+      <span class="title">${escapeHtml(t.title)}</span>
+      ${badge}
+    </div>`;
+  }).join('');
+  list.querySelectorAll('.todo').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = parseInt(el.dataset.id);
+      selectedTodo = todos.find(t => t.id === id);
+      openModal();
+    });
+  });
+}
+
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('tab-pending').classList.toggle('active', tab === 'pending');
+  document.getElementById('tab-done').classList.toggle('active', tab === 'done');
+  load();
+}
+
+function openModal() {
+  document.getElementById('modal-title').textContent = selectedTodo.title;
+  const dueText = selectedTodo.due_date ? `期限: ${selectedTodo.due_date}` : '期限なし';
+  document.getElementById('modal-detail').textContent = dueText;
+  const actionBtn = document.getElementById('modal-action');
+  if (selectedTodo.completed) {
+    actionBtn.textContent = '↩️ 未完了に戻す';
+    actionBtn.onclick = uncompleteTodo;
+  } else {
+    actionBtn.textContent = '✅ 完了にする';
+    actionBtn.onclick = completeTodo;
+  }
+  document.getElementById('modal').classList.add('show');
+}
+
+function closeModal(e) {
+  if (e && e.target !== e.currentTarget) return;
+  document.getElementById('modal').classList.remove('show');
+  selectedTodo = null;
+}
+
+async function completeTodo() {
+  await fetch(`/api/todos/${selectedTodo.id}/complete`, { method: 'POST' });
+  closeModal();
+  load();
+}
+
+async function uncompleteTodo() {
+  await fetch(`/api/todos/${selectedTodo.id}/uncomplete`, { method: 'POST' });
+  closeModal();
+  load();
+}
+
+async function deleteTodo() {
+  if (!confirm('削除しますか？')) return;
+  await fetch(`/api/todos/${selectedTodo.id}`, { method: 'DELETE' });
+  closeModal();
+  load();
+}
+
+function openForm() {
+  editingId = null;
+  document.getElementById('form-title').textContent = '新規ToDo';
+  document.getElementById('form-title-input').value = '';
+  document.getElementById('form-due').value = '';
+  document.getElementById('form-modal').classList.add('show');
+  setTimeout(() => document.getElementById('form-title-input').focus(), 100);
+}
+
+function openEdit() {
+  editingId = selectedTodo.id;
+  document.getElementById('form-title').textContent = 'ToDoを編集';
+  document.getElementById('form-title-input').value = selectedTodo.title;
+  document.getElementById('form-due').value = selectedTodo.due_date || '';
+  closeModal();
+  document.getElementById('form-modal').classList.add('show');
+}
+
+function closeForm(e) {
+  if (e && e.target !== e.currentTarget) return;
+  document.getElementById('form-modal').classList.remove('show');
+}
+
+async function saveTodo() {
+  const title = document.getElementById('form-title-input').value.trim();
+  const due_date = document.getElementById('form-due').value || null;
+  if (!title) { alert('タイトルを入力してください'); return; }
+  if (editingId) {
+    await fetch(`/api/todos/${editingId}`, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ title, due_date })
+    });
+  } else {
+    await fetch('/api/todos', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ title, due_date })
+    });
+  }
+  closeForm();
+  load();
+}
+
+load();
+</script>
+</body>
+</html>
