@@ -11,7 +11,7 @@
     font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
     background: #f5f5f7;
     color: #222;
-    padding-bottom: 80px;
+    padding-bottom: 40px;
   }
   header {
     background: #2c7be5;
@@ -46,7 +46,34 @@
     border-bottom-color: #2c7be5;
     font-weight: 600;
   }
-  .list { padding: 12px; }
+
+  .section { padding: 0 12px; margin-top: 16px; }
+  .section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 4px 8px;
+  }
+  .section-head .title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #333;
+  }
+  .section-head .title.today { color: #dd6b20; }
+  .section-head .add-btn {
+    background: #2c7be5;
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(44,123,229,0.3);
+  }
+  .section-head .add-btn.today { background: #dd6b20; box-shadow: 0 2px 4px rgba(221,107,32,0.3); }
+
   .todo {
     background: #fff;
     border-radius: 10px;
@@ -64,7 +91,7 @@
     min-width: 64px;
   }
   .todo.overdue .due { color: #e53e3e; font-weight: 600; }
-  .todo.today .due { color: #dd6b20; font-weight: 600; }
+  .todo.today-due .due { color: #dd6b20; font-weight: 600; }
   .todo.soon .due { color: #d69e2e; }
   .todo .title { flex: 1; font-size: 15px; }
   .todo .tpl-badge {
@@ -75,23 +102,7 @@
     border-radius: 4px;
   }
   .todo.completed .title { text-decoration: line-through; color: #999; }
-  .empty { text-align: center; color: #999; padding: 40px 0; }
-
-  .fab {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    background: #2c7be5;
-    color: #fff;
-    font-size: 30px;
-    border: none;
-    box-shadow: 0 4px 12px rgba(44,123,229,0.4);
-    cursor: pointer;
-    z-index: 5;
-  }
+  .empty { text-align: center; color: #aaa; padding: 20px 0; font-size: 13px; }
 
   .modal-bg {
     position: fixed;
@@ -160,9 +171,7 @@
   <button id="tab-done" onclick="switchTab('done')">完了済み</button>
 </div>
 
-<div id="list" class="list"></div>
-
-<button class="fab" onclick="openForm()">＋</button>
+<div id="sections"></div>
 
 <!-- 完了確認モーダル -->
 <div id="modal" class="modal-bg" onclick="closeModal(event)">
@@ -171,6 +180,7 @@
     <div id="modal-detail" class="detail"></div>
     <div class="btn-row">
       <button id="modal-action" class="btn btn-primary">✅ 完了にする</button>
+      <button id="modal-move" class="btn btn-secondary"></button>
       <button class="btn btn-secondary" onclick="openEdit()">✏️ 編集</button>
       <button class="btn btn-danger" onclick="deleteTodo()">🗑 削除</button>
       <button class="btn btn-cancel" onclick="closeModal()">キャンセル</button>
@@ -197,6 +207,7 @@
 let currentTab = 'pending';
 let selectedTodo = null;
 let editingId = null;
+let formCategory = 'other';
 
 const fmtDate = (s) => {
   if (!s) return '';
@@ -213,45 +224,75 @@ function dayDiff(dueStr) {
   return Math.round((due - now) / 86400000);
 }
 
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderTodo(t, includeDue) {
+  const diff = dayDiff(t.due_date);
+  let cls = '';
+  if (includeDue && diff !== null) {
+    if (diff < 0) cls = 'overdue';
+    else if (diff === 0) cls = 'today-due';
+    else if (diff <= 3) cls = 'soon';
+  }
+  const due = t.due_date
+    ? (diff === 0 ? '今日' : (diff < 0 ? `${-diff}日前` : fmtDate(t.due_date)))
+    : '—';
+  const badge = t.template_id ? '<span class="tpl-badge">定期</span>' : '';
+  const completedCls = t.completed ? ' completed' : '';
+  return `<div class="todo ${cls}${completedCls}" data-id="${t.id}">
+    <span class="due">${due}</span>
+    <span class="title">${escapeHtml(t.title)}</span>
+    ${badge}
+  </div>`;
+}
+
 async function load() {
   const completed = currentTab === 'done' ? '1' : '0';
   const res = await fetch(`/api/todos?completed=${completed}`);
   const todos = await res.json();
-  const list = document.getElementById('list');
-  if (todos.length === 0) {
-    list.innerHTML = '<div class="empty">ToDoはありません</div>';
+  const sections = document.getElementById('sections');
+
+  if (currentTab === 'done') {
+    sections.innerHTML = `
+      <div class="section">
+        <div class="section-head"><span class="title">完了済み</span></div>
+        <div id="list-done">${todos.length ? todos.map(t => renderTodo(t, false)).join('') : '<div class="empty">完了済みはありません</div>'}</div>
+      </div>`;
+    attachHandlers(todos);
     return;
   }
-  list.innerHTML = todos.map(t => {
-    const diff = dayDiff(t.due_date);
-    let cls = '';
-    if (currentTab === 'pending' && diff !== null) {
-      if (diff < 0) cls = 'overdue';
-      else if (diff === 0) cls = 'today';
-      else if (diff <= 3) cls = 'soon';
-    }
-    const due = t.due_date
-      ? (diff === 0 ? '今日' : (diff < 0 ? `${-diff}日前` : fmtDate(t.due_date)))
-      : '—';
-    const badge = t.template_id ? '<span class="tpl-badge">定期</span>' : '';
-    const completedCls = t.completed ? ' completed' : '';
-    return `<div class="todo ${cls}${completedCls}" data-id="${t.id}">
-      <span class="due">${due}</span>
-      <span class="title">${escapeHtml(t.title)}</span>
-      ${badge}
+
+  const todayList = todos.filter(t => t.category === 'today');
+  const otherList = todos.filter(t => t.category !== 'today');
+
+  sections.innerHTML = `
+    <div class="section">
+      <div class="section-head">
+        <span class="title today">今日やること</span>
+        <button class="add-btn today" onclick="openForm('today')">＋</button>
+      </div>
+      <div>${todayList.length ? todayList.map(t => renderTodo(t, true)).join('') : '<div class="empty">今日やることはありません</div>'}</div>
+    </div>
+    <div class="section">
+      <div class="section-head">
+        <span class="title">その他</span>
+        <button class="add-btn" onclick="openForm('other')">＋</button>
+      </div>
+      <div>${otherList.length ? otherList.map(t => renderTodo(t, true)).join('') : '<div class="empty">その他のToDoはありません</div>'}</div>
     </div>`;
-  }).join('');
-  list.querySelectorAll('.todo').forEach(el => {
+  attachHandlers(todos);
+}
+
+function attachHandlers(todos) {
+  document.querySelectorAll('.todo').forEach(el => {
     el.addEventListener('click', () => {
       const id = parseInt(el.dataset.id);
       selectedTodo = todos.find(t => t.id === id);
       openModal();
     });
   });
-}
-
-function escapeHtml(s) {
-  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 function switchTab(tab) {
@@ -272,6 +313,19 @@ function openModal() {
   } else {
     actionBtn.textContent = '✅ 完了にする';
     actionBtn.onclick = completeTodo;
+  }
+  const moveBtn = document.getElementById('modal-move');
+  if (selectedTodo.completed) {
+    moveBtn.style.display = 'none';
+  } else {
+    moveBtn.style.display = 'block';
+    if (selectedTodo.category === 'today') {
+      moveBtn.textContent = '📥 その他へ移動';
+      moveBtn.onclick = () => moveCategory('other');
+    } else {
+      moveBtn.textContent = '⭐ 今日やることへ移動';
+      moveBtn.onclick = () => moveCategory('today');
+    }
   }
   document.getElementById('modal').classList.add('show');
 }
@@ -294,6 +348,16 @@ async function uncompleteTodo() {
   load();
 }
 
+async function moveCategory(cat) {
+  await fetch(`/api/todos/${selectedTodo.id}`, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ category: cat })
+  });
+  closeModal();
+  load();
+}
+
 async function deleteTodo() {
   if (!confirm('削除しますか？')) return;
   await fetch(`/api/todos/${selectedTodo.id}`, { method: 'DELETE' });
@@ -301,9 +365,11 @@ async function deleteTodo() {
   load();
 }
 
-function openForm() {
+function openForm(category) {
   editingId = null;
-  document.getElementById('form-title').textContent = '新規ToDo';
+  formCategory = category || 'other';
+  const label = formCategory === 'today' ? '今日やること' : 'その他';
+  document.getElementById('form-title').textContent = `新規ToDo（${label}）`;
   document.getElementById('form-title-input').value = '';
   document.getElementById('form-due').value = '';
   document.getElementById('form-modal').classList.add('show');
@@ -312,6 +378,7 @@ function openForm() {
 
 function openEdit() {
   editingId = selectedTodo.id;
+  formCategory = selectedTodo.category || 'other';
   document.getElementById('form-title').textContent = 'ToDoを編集';
   document.getElementById('form-title-input').value = selectedTodo.title;
   document.getElementById('form-due').value = selectedTodo.due_date || '';
@@ -338,7 +405,7 @@ async function saveTodo() {
     await fetch('/api/todos', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ title, due_date })
+      body: JSON.stringify({ title, due_date, category: formCategory })
     });
   }
   closeForm();

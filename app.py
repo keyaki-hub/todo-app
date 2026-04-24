@@ -28,6 +28,7 @@ def init_db():
                 completed INTEGER DEFAULT 0,
                 completed_at TEXT,
                 template_id INTEGER,
+                category TEXT DEFAULT 'other',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -42,6 +43,9 @@ def init_db():
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        cols = [r[1] for r in conn.execute('PRAGMA table_info(todos)').fetchall()]
+        if 'category' not in cols:
+            conn.execute("ALTER TABLE todos ADD COLUMN category TEXT DEFAULT 'other'")
 
 
 init_db()
@@ -141,7 +145,8 @@ def list_todos():
         else:
             rows = conn.execute(
                 "SELECT * FROM todos WHERE completed=0 "
-                "ORDER BY CASE WHEN due_date IS NULL THEN 1 ELSE 0 END, due_date ASC, id ASC"
+                "ORDER BY CASE category WHEN 'today' THEN 0 ELSE 1 END, "
+                "CASE WHEN due_date IS NULL THEN 1 ELSE 0 END, due_date ASC, id ASC"
             ).fetchall()
     return jsonify([dict(r) for r in rows])
 
@@ -151,12 +156,15 @@ def create_todo():
     data = request.json or {}
     title = (data.get("title") or "").strip()
     due_date = data.get("due_date") or None
+    category = data.get("category") or 'other'
+    if category not in ('today', 'other'):
+        category = 'other'
     if not title:
         return jsonify({"ok": False, "error": "タイトル必須"}), 400
     with get_db() as conn:
         cur = conn.execute(
-            "INSERT INTO todos (title, due_date) VALUES (?, ?)",
-            (title, due_date)
+            "INSERT INTO todos (title, due_date, category) VALUES (?, ?, ?)",
+            (title, due_date, category)
         )
         new_id = cur.lastrowid
     return jsonify({"ok": True, "id": new_id})
@@ -167,7 +175,7 @@ def update_todo(todo_id):
     data = request.json or {}
     fields = []
     values = []
-    for key in ("title", "due_date"):
+    for key in ("title", "due_date", "category"):
         if key in data:
             fields.append(f"{key}=?")
             values.append(data[key] or None)
