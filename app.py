@@ -3,10 +3,13 @@ import sqlite3
 from datetime import date, timedelta
 from flask import Flask, render_template, Response, request, jsonify
 
-app = Flask(__name__)
+try:
+    from config import USERNAME, PASSWORD
+except ImportError:
+    USERNAME = "keyaki"
+    PASSWORD = "XXXXXXXX"  # config.py を作成してください
 
-USERNAME = "keyaki"
-PASSWORD = "XXXXXXXX"  # ← 要変更
+app = Flask(__name__)
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'todo.db')
 LEAD_DAYS = 7  # 定期ToDoを発生日の何日前から表示するか
