@@ -1,13 +1,7 @@
 import os
 import sqlite3
 from datetime import date, timedelta
-from flask import Flask, render_template, Response, request, jsonify
-
-try:
-    from config import USERNAME, PASSWORD
-except ImportError:
-    USERNAME = "keyaki"
-    PASSWORD = "XXXXXXXX"  # config.py を作成してください
+from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
 
@@ -106,24 +100,6 @@ def generate_from_templates():
                 "INSERT INTO todos (title, due_date, template_id) VALUES (?, ?, ?)",
                 (t['title'], nxt.isoformat(), t['id'])
             )
-
-
-def check_auth(username, password):
-    return username == USERNAME and password == PASSWORD
-
-
-def require_auth():
-    return Response(
-        "ログインが必要です", 401,
-        {"WWW-Authenticate": 'Basic realm="Login Required"'}
-    )
-
-
-@app.before_request
-def before_request():
-    auth = request.authorization
-    if not auth or not check_auth(auth.username, auth.password):
-        return require_auth()
 
 
 @app.route("/")
